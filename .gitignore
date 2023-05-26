@@ -3,3 +3,8 @@ __pycache__/
 
 poetry.lock
 .python-version
+
+# For blockchain part
+password.txt
+boot.key
+imp.txt

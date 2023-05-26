@@ -1,0 +1,22 @@
+
+miner.start(1)
+base = eth.accounts[0]
+miner.setEtherbase(base)
+miner.start(1)
+eth.blockNumber
+eth.syncing
+eth.sendTransaction({
+  to: '0xc94d95a5106270775351eecfe43f97e8e75e59e8',
+  from: eth.accounts[0],
+  value: 25000
+});
+eth.getBalance(eth.accounts[0])
+eth.getBalance(eth.accounts[0])et
+eth.chainID
+eth.chainId
+eth.chainId()
+base = eth.accounts[0]
+miner.setEtherbase(base)
+miner.start(1)
+eth.accounts
+admin.nodeInfo
