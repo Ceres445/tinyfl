@@ -1,4 +1,0 @@
-TO START IPFS -> ipfs daemon --writable=true
-
-TO SAVE FILE -> python3.9 save.py filename
-TO DOWNLOAD FILE USING CID -> python3.9 load.py "CID"
