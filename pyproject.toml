@@ -23,6 +23,7 @@ agg = "tinyfl.aggregator:main"
 black = "^23.3.0"
 psrecord = "^1.2"
 matplotlib = "^3.7.1"
+web3 = {extras = ["tester"], version = "^6.4.0"}
 
 [build-system]
 requires = ["poetry-core"]

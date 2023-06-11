@@ -12,6 +12,7 @@ import uvicorn
 import asyncio
 import httpx
 import logging
+from web3 import Web3, AsyncWeb3
 
 from tinyfl.model import create_model, test_model, stratified_split_dataset, strategies
 from tinyfl.message import DeRegister, Register, StartRound, SubmitWeights
@@ -85,6 +86,10 @@ def next_msg_id() -> int:
     msg_id += 1
     return ack_id
 
+
+w3 = Web3(AsyncWeb3.IPCProvider("./path/to/ipc"))
+registration_contract = Web3.eth.contract()
+registration_contract.functions.registerDevice("aggregator").call()
 
 app = FastAPI()
 
