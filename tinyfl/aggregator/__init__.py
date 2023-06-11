@@ -14,12 +14,12 @@ import httpx
 import logging
 
 from tinyfl.model import (
-    fedavg_models,
     create_model,
     test_model,
     stratified_split_dataset,
+    strategy
 )
-from tinyfl.message import Register, StartRound, SubmitWeights
+from tinyfl.message import DeRegister, Register, StartRound, SubmitWeights
 
 batch_size = 64
 
@@ -55,6 +55,17 @@ clients = set()
 with open(sys.argv[1]) as f:
     config = json.load(f)
     host, port = itemgetter("host", "port")(config)
+    consensus, timeout, epochs = itemgetter("consensus", "timeout", "epochs")(config)
+    aggregation_model = itemgetter("aggregation_model")(config)
+    if strategy.get(aggregation_model) is None:
+        raise ValueError("Invalid aggregation model")
+    aggregation_model = strategy[aggregation_model]
+
+logger.info(f"{host}:{port} loaded from config.")
+logger.info(f"Consensus: {consensus}")
+logger.info(f"Timeout: {timeout}")
+logger.info(f"Epochs: {epochs}")
+logger.info(f"Aggregation model: {aggregation_model.__name__}")
 
 msg_id = 0
 
@@ -66,11 +77,10 @@ model = create_model()
 
 me = f"http://{host}:{port}"
 
-consensus = 2
-timeout = 1000
-epochs = 3
 
 quorum = threading.Condition()
+
+clients_models_lock = threading.Lock()
 client_models = []
 
 
@@ -108,17 +118,24 @@ async def handle(req: Request, background_tasks: BackgroundTasks):
         case Register(url=url):
             with client_lock:
                 clients.add(url)
+            logger.info(f"Client {url} registered")
             return {"success": True, "message": "Registered"}
         case SubmitWeights(round=round, weights=weights):
             background_tasks.add_task(collect_weights, copy.deepcopy(weights))
             return {"success": True, "message": "Weights submitted"}
+        case DeRegister(url=url):
+            with client_lock:
+                clients.remove(url)
+            logger.info(f"Client {url} de-registered")
+            return {"success": True, "message": "De-registered"}
         case _:
             return {"success": False, "message": "Unknown message"}
 
 
 def state_manager():
     global client_models
-    client_models = []
+    with clients_models_lock:
+        client_models = []
     asyncio.run(start_training())
     quorum_achieved: bool
     with quorum:
@@ -130,7 +147,8 @@ def state_manager():
             return
         else:
             logger.info("Quorum achieved!")
-            model.load_state_dict(fedavg_models(client_models))
+            with clients_models_lock:
+                model.load_state_dict(aggregation_model(client_models))
             logger.info("Aggregated model")
             accuracy, loss = test_model(model, testloader)
             logger.info(f"Accuracy: {(accuracy):>0.1f}%, Loss: {loss:>8f}")
@@ -166,11 +184,14 @@ async def start_training():
 async def collect_weights(weights: Mapping[str, Any]):
     with round_lock:
         with quorum:
-            if len(client_models) == consensus:
-                client_models.append(weights)
-                logger.info("Appended weights")
-                logger.info("Quorum notified")
-                quorum.notify()
+            with clients_models_lock:
+                notify_quorum = False
+                if len(client_models) < consensus:
+                    client_models.append(weights)
+                    logger.info("Appended weights")
+                    notify_quorum = len(client_models) == consensus
+                if notify_quorum:
+                    quorum.notify()
 
 
 def main():
