@@ -12,7 +12,8 @@ import uvicorn
 import asyncio
 import httpx
 import logging
-from web3 import Web3, AsyncWeb3
+import os
+from web3 import Web3
 
 from tinyfl.model import create_model, test_model, stratified_split_dataset, strategies
 from tinyfl.message import DeRegister, Register, StartRound, SubmitWeights
@@ -50,9 +51,33 @@ clients = set()
 
 with open(sys.argv[1]) as f:
     config = json.load(f)
-    host, port, consensus, timeout, epochs, strategy = itemgetter(
-        "host", "port", "consensus", "timeout", "epochs", "strategy"
-    )(config)
+    (
+        host,
+        port,
+        consensus,
+        timeout,
+        epochs,
+        strategy,
+        endpoint,
+        registration_contract_address,
+        round_control_contract_address,
+        score_contract_address,
+        submit_model_contract_address,
+    ) = itemgetter(
+        "host",
+        "port",
+        "consensus",
+        "timeout",
+        "epochs",
+        "strategy",
+        "endpoint",
+        "registration_contract_address",
+        "round_control_contract_address",
+        "score_contract_address",
+        "submit_model_contract_address",
+    )(
+        config
+    )
     if strategies.get(strategy) is None:
         raise ValueError("Invalid aggregation model")
     strategy = strategies[strategy]
@@ -87,9 +112,42 @@ def next_msg_id() -> int:
     return ack_id
 
 
-w3 = Web3(AsyncWeb3.IPCProvider("./path/to/ipc"))
-registration_contract = Web3.eth.contract()
-registration_contract.functions.registerDevice("aggregator").call()
+w3 = Web3(Web3.HTTPProvider(endpoint))
+
+registration_contract = w3.eth.contract(
+    address=Web3.to_checksum_address(registration_contract_address),
+    abi=json.load(
+        open(str(os.path.join(os.path.dirname(__file__), "abi/Registration.json")))
+    )["abi"],
+)
+
+# TODO: Regsitering as trainer by default, will need to be changed
+registration_contract.functions.registerDevice("trainer").call()
+
+round_control_contract = w3.eth.contract(
+    address=Web3.to_checksum_address(round_control_contract_address),
+    abi=json.load(
+        open(
+            str(
+                os.path.join(os.path.dirname(__file__), "abi/RoundControlContract.json")
+            )
+        )
+    )["abi"],
+)
+
+score_contract = w3.eth.contract(
+    address=Web3.to_checksum_address(score_contract_address),
+    abi=json.load(
+        open(str(os.path.join(os.path.dirname(__file__), "abi/ScoreContract.json")))
+    )["abi"],
+)
+
+submit_model_contract_address = w3.eth.contract(
+    address=Web3.to_checksum_address(submit_model_contract_address),
+    abi=json.load(
+        open(str(os.path.join(os.path.dirname(__file__), "abi/SubmitModel.json")))
+    )["abi"],
+)
 
 app = FastAPI()
 
