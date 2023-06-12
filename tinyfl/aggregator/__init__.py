@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 import copy
 import pickle
 import threading
@@ -121,9 +122,6 @@ registration_contract = w3.eth.contract(
     )["abi"],
 )
 
-# TODO: Regsitering as trainer by default, will need to be changed
-registration_contract.functions.registerDevice("trainer").call()
-
 round_control_contract = w3.eth.contract(
     address=Web3.to_checksum_address(round_control_contract_address),
     abi=json.load(
@@ -142,14 +140,21 @@ score_contract = w3.eth.contract(
     )["abi"],
 )
 
-submit_model_contract_address = w3.eth.contract(
+submit_model_contract = w3.eth.contract(
     address=Web3.to_checksum_address(submit_model_contract_address),
     abi=json.load(
         open(str(os.path.join(os.path.dirname(__file__), "abi/SubmitModel.json")))
     )["abi"],
 )
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    registration_contract.functions.registerDevice("trainer").call()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 @app.get("/")
@@ -210,6 +215,7 @@ def state_manager():
             logger.info("Aggregated model")
             accuracy, loss = test_model(model, testloader)
             logger.info(f"Accuracy: {(accuracy):>0.1f}%, Loss: {loss:>8f}")
+            # TODO: Submit Model Here
 
 
 async def start_training():
