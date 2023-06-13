@@ -67,3 +67,13 @@ docker run --name party0 --network=host -e CLIENT=1 -e TINYFL_CONFIG=configs/par
 docker run --name party1 --network=host -e CLIENT=1 -e TINYFL_CONFIG=configs/party1.config.json tinyfl:latest
 docker run --name party2 --network=host -e CLIENT=1 -e TINYFL_CONFIG=configs/party2.config.json tinyfl:latest
 ```
+
+
+# Setting up ipfs via docker
+
+```
+export ipfs_staging=</absolute/path/to/somewhere/>
+export ipfs_data=</absolute/path/to/somewhere_else/>
+docker pull ipfs/kubo
+docker run -d --name ipfs_host -v $ipfs_staging:/export -v $ipfs_data:/data/ipfs -p 4001:4001 -p 4001:4001/udp -p 127.0.0.1:8080:8080 -p 127.0.0.1:5001:5001 ipfs/kubo:latest
+```
