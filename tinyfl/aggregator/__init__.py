@@ -18,6 +18,7 @@ from web3 import Web3
 
 from tinyfl.model import create_model, test_model, stratified_split_dataset, strategies
 from tinyfl.message import DeRegister, Register, StartRound, SubmitWeights
+from tinyfl.ipfs import save_model_ipfs, load_model_ipfs
 
 batch_size = 64
 
@@ -64,6 +65,7 @@ with open(sys.argv[1]) as f:
         round_control_contract_address,
         score_contract_address,
         submit_model_contract_address,
+        ipfs_host,
     ) = itemgetter(
         "host",
         "port",
@@ -76,6 +78,7 @@ with open(sys.argv[1]) as f:
         "round_control_contract_address",
         "score_contract_address",
         "submit_model_contract_address",
+        "ipfs_host",
     )(
         config
     )
@@ -113,48 +116,54 @@ def next_msg_id() -> int:
     return ack_id
 
 
-w3 = Web3(Web3.HTTPProvider(endpoint))
+load_web3 = False
+if load_web3:
 
-registration_contract = w3.eth.contract(
-    address=Web3.to_checksum_address(registration_contract_address),
-    abi=json.load(
-        open(str(os.path.join(os.path.dirname(__file__), "abi/Registration.json")))
-    )["abi"],
-)
+    w3 = Web3(Web3.HTTPProvider(endpoint))
 
-round_control_contract = w3.eth.contract(
-    address=Web3.to_checksum_address(round_control_contract_address),
-    abi=json.load(
-        open(
-            str(
-                os.path.join(os.path.dirname(__file__), "abi/RoundControlContract.json")
+    registration_contract = w3.eth.contract(
+        address=Web3.to_checksum_address(registration_contract_address),
+        abi=json.load(
+            open(str(os.path.join(os.path.dirname(__file__), "abi/Registration.json")))
+        )["abi"],
+    )
+
+    round_control_contract = w3.eth.contract(
+        address=Web3.to_checksum_address(round_control_contract_address),
+        abi=json.load(
+            open(
+                str(
+                    os.path.join(
+                        os.path.dirname(__file__), "abi/RoundControlContract.json"
+                    )
+                )
             )
-        )
-    )["abi"],
-)
+        )["abi"],
+    )
 
-score_contract = w3.eth.contract(
-    address=Web3.to_checksum_address(score_contract_address),
-    abi=json.load(
-        open(str(os.path.join(os.path.dirname(__file__), "abi/ScoreContract.json")))
-    )["abi"],
-)
+    score_contract = w3.eth.contract(
+        address=Web3.to_checksum_address(score_contract_address),
+        abi=json.load(
+            open(str(os.path.join(os.path.dirname(__file__), "abi/ScoreContract.json")))
+        )["abi"],
+    )
 
-submit_model_contract = w3.eth.contract(
-    address=Web3.to_checksum_address(submit_model_contract_address),
-    abi=json.load(
-        open(str(os.path.join(os.path.dirname(__file__), "abi/SubmitModel.json")))
-    )["abi"],
-)
+    submit_model_contract = w3.eth.contract(
+        address=Web3.to_checksum_address(submit_model_contract_address),
+        abi=json.load(
+            open(str(os.path.join(os.path.dirname(__file__), "abi/SubmitModel.json")))
+        )["abi"],
+    )
 
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        registration_contract.functions.registerDevice("trainer").call()
+        yield
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    registration_contract.functions.registerDevice("trainer").call()
-    yield
+    app = FastAPI(lifespan=lifespan)
+else:
 
-
-app = FastAPI(lifespan=lifespan)
+    app = FastAPI()
 
 
 @app.get("/")
@@ -165,6 +174,18 @@ async def ping():
         "me": me,
         "round": round_id,
         "clients": clients,
+    }
+
+
+@app.get("/load_model")
+async def load_model(cid: str):
+    mod = await load_model_ipfs(cid, ipfs_host)
+    accuracy, loss = test_model(model, testloader)
+    return {
+        "success": True,
+        "message": "Model loaded",
+        "accuracy": accuracy,
+        "loss": loss,
     }
 
 
@@ -215,7 +236,9 @@ def state_manager():
             logger.info("Aggregated model")
             accuracy, loss = test_model(model, testloader)
             logger.info(f"Accuracy: {(accuracy):>0.1f}%, Loss: {loss:>8f}")
-            # TODO: Submit Model Here
+            logger.info("Submitting model to blockchain")
+            cid = asyncio.run(save_model_ipfs(model.state_dict(), ipfs_host))
+            logger.info(f"Model saved to IPFS with CID: {cid}")
 
 
 async def start_training():
