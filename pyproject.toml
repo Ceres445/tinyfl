@@ -12,6 +12,8 @@ torchvision = "0.14.0"
 fastapi = "^0.95.1"
 uvicorn = {extras = ["standard"], version = "^0.21.1"}
 httpx = "^0.24.0"
+aioipfs = "^0.6.3"
+web3 = "^6.4.0"
 
 [tool.poetry.scripts]
 party = "tinyfl.party:main"
@@ -21,6 +23,7 @@ agg = "tinyfl.aggregator:main"
 black = "^23.3.0"
 psrecord = "^1.2"
 matplotlib = "^3.7.1"
+web3 = {extras = ["tester"], version = "^6.4.0"}
 
 [build-system]
 requires = ["poetry-core"]

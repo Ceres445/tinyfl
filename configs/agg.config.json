@@ -4,5 +4,10 @@
   "consensus": 2,
   "timeout": 1000,
   "epochs": 3,
-  "aggregation_model": "fedavg"
+  "strategy": "fedavg",
+  "endpoint": "http://127.0.0.1:8545",
+  "registration_contract_address": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+  "round_control_contract_address": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+  "score_contract_address": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
+  "submit_model_contract_address": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9"
 }

@@ -1,9 +1,10 @@
+from contextlib import asynccontextmanager
 import copy
 import pickle
 import threading
 from typing import Any, Mapping
 from fastapi import BackgroundTasks, FastAPI, Request
-from torch.utils.data import DataLoader, Dataset, Subset
+from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 import sys
 import json
@@ -12,13 +13,10 @@ import uvicorn
 import asyncio
 import httpx
 import logging
+import os
+from web3 import Web3
 
-from tinyfl.model import (
-    create_model,
-    test_model,
-    stratified_split_dataset,
-    strategy
-)
+from tinyfl.model import create_model, test_model, stratified_split_dataset, strategies
 from tinyfl.message import DeRegister, Register, StartRound, SubmitWeights
 
 batch_size = 64
@@ -54,18 +52,42 @@ clients = set()
 
 with open(sys.argv[1]) as f:
     config = json.load(f)
-    host, port = itemgetter("host", "port")(config)
-    consensus, timeout, epochs = itemgetter("consensus", "timeout", "epochs")(config)
-    aggregation_model = itemgetter("aggregation_model")(config)
-    if strategy.get(aggregation_model) is None:
+    (
+        host,
+        port,
+        consensus,
+        timeout,
+        epochs,
+        strategy,
+        endpoint,
+        registration_contract_address,
+        round_control_contract_address,
+        score_contract_address,
+        submit_model_contract_address,
+    ) = itemgetter(
+        "host",
+        "port",
+        "consensus",
+        "timeout",
+        "epochs",
+        "strategy",
+        "endpoint",
+        "registration_contract_address",
+        "round_control_contract_address",
+        "score_contract_address",
+        "submit_model_contract_address",
+    )(
+        config
+    )
+    if strategies.get(strategy) is None:
         raise ValueError("Invalid aggregation model")
-    aggregation_model = strategy[aggregation_model]
+    strategy = strategies[strategy]
 
 logger.info(f"{host}:{port} loaded from config.")
 logger.info(f"Consensus: {consensus}")
 logger.info(f"Timeout: {timeout}")
 logger.info(f"Epochs: {epochs}")
-logger.info(f"Aggregation model: {aggregation_model.__name__}")
+logger.info(f"Aggregation model: {strategy.__name__}")
 
 msg_id = 0
 
@@ -91,7 +113,48 @@ def next_msg_id() -> int:
     return ack_id
 
 
-app = FastAPI()
+w3 = Web3(Web3.HTTPProvider(endpoint))
+
+registration_contract = w3.eth.contract(
+    address=Web3.to_checksum_address(registration_contract_address),
+    abi=json.load(
+        open(str(os.path.join(os.path.dirname(__file__), "abi/Registration.json")))
+    )["abi"],
+)
+
+round_control_contract = w3.eth.contract(
+    address=Web3.to_checksum_address(round_control_contract_address),
+    abi=json.load(
+        open(
+            str(
+                os.path.join(os.path.dirname(__file__), "abi/RoundControlContract.json")
+            )
+        )
+    )["abi"],
+)
+
+score_contract = w3.eth.contract(
+    address=Web3.to_checksum_address(score_contract_address),
+    abi=json.load(
+        open(str(os.path.join(os.path.dirname(__file__), "abi/ScoreContract.json")))
+    )["abi"],
+)
+
+submit_model_contract = w3.eth.contract(
+    address=Web3.to_checksum_address(submit_model_contract_address),
+    abi=json.load(
+        open(str(os.path.join(os.path.dirname(__file__), "abi/SubmitModel.json")))
+    )["abi"],
+)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    registration_contract.functions.registerDevice("trainer").call()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 @app.get("/")
@@ -148,10 +211,11 @@ def state_manager():
         else:
             logger.info("Quorum achieved!")
             with clients_models_lock:
-                model.load_state_dict(aggregation_model(client_models))
+                model.load_state_dict(strategy(client_models))
             logger.info("Aggregated model")
             accuracy, loss = test_model(model, testloader)
             logger.info(f"Accuracy: {(accuracy):>0.1f}%, Loss: {loss:>8f}")
+            # TODO: Submit Model Here
 
 
 async def start_training():
