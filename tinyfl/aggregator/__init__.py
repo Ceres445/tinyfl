@@ -116,54 +116,48 @@ def next_msg_id() -> int:
     return ack_id
 
 
-load_web3 = False
-if load_web3:
+w3 = Web3(Web3.HTTPProvider(endpoint))
 
-    w3 = Web3(Web3.HTTPProvider(endpoint))
+registration_contract = w3.eth.contract(
+    address=Web3.to_checksum_address(registration_contract_address),
+    abi=json.load(
+        open(str(os.path.join(os.path.dirname(__file__), "abi/Registration.json")))
+    )["abi"],
+)
 
-    registration_contract = w3.eth.contract(
-        address=Web3.to_checksum_address(registration_contract_address),
-        abi=json.load(
-            open(str(os.path.join(os.path.dirname(__file__), "abi/Registration.json")))
-        )["abi"],
-    )
-
-    round_control_contract = w3.eth.contract(
-        address=Web3.to_checksum_address(round_control_contract_address),
-        abi=json.load(
-            open(
-                str(
-                    os.path.join(
-                        os.path.dirname(__file__), "abi/RoundControlContract.json"
-                    )
-                )
+round_control_contract = w3.eth.contract(
+    address=Web3.to_checksum_address(round_control_contract_address),
+    abi=json.load(
+        open(
+            str(
+                os.path.join(os.path.dirname(__file__), "abi/RoundControlContract.json")
             )
-        )["abi"],
-    )
+        )
+    )["abi"],
+)
 
-    score_contract = w3.eth.contract(
-        address=Web3.to_checksum_address(score_contract_address),
-        abi=json.load(
-            open(str(os.path.join(os.path.dirname(__file__), "abi/ScoreContract.json")))
-        )["abi"],
-    )
+score_contract = w3.eth.contract(
+    address=Web3.to_checksum_address(score_contract_address),
+    abi=json.load(
+        open(str(os.path.join(os.path.dirname(__file__), "abi/ScoreContract.json")))
+    )["abi"],
+)
 
-    submit_model_contract = w3.eth.contract(
-        address=Web3.to_checksum_address(submit_model_contract_address),
-        abi=json.load(
-            open(str(os.path.join(os.path.dirname(__file__), "abi/SubmitModel.json")))
-        )["abi"],
-    )
+submit_model_contract = w3.eth.contract(
+    address=Web3.to_checksum_address(submit_model_contract_address),
+    abi=json.load(
+        open(str(os.path.join(os.path.dirname(__file__), "abi/SubmitModel.json")))
+    )["abi"],
+)
 
-    @asynccontextmanager
-    async def lifespan(app: FastAPI):
-        registration_contract.functions.registerDevice("trainer").call()
-        yield
 
-    app = FastAPI(lifespan=lifespan)
-else:
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    registration_contract.functions.registerDevice("trainer").call()
+    yield
 
-    app = FastAPI()
+
+app = FastAPI(lifespan=lifespan)
 
 
 @app.get("/")
