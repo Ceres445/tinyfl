@@ -16,26 +16,15 @@ import logging
 import os
 from web3 import Web3
 
-from tinyfl.model import create_model, test_model, stratified_split_dataset, strategies
+from tinyfl.model import (
+    models,
+    splits,
+    strategies,
+)
 from tinyfl.message import DeRegister, Register, StartRound, SubmitWeights
 from tinyfl.ipfs import save_model_ipfs, load_model_ipfs
 
 batch_size = 64
-
-trainset = datasets.FashionMNIST(
-    root="data",
-    train=True,
-    download=True,
-    transform=transforms.ToTensor(),
-)
-
-testset = datasets.FashionMNIST(
-    root="data",
-    train=False,
-    download=True,
-    transform=transforms.ToTensor(),
-)
-testloader = DataLoader(testset, batch_size=batch_size)
 
 host: str
 port: int
@@ -66,6 +55,8 @@ with open(sys.argv[1]) as f:
         score_contract_address,
         submit_model_contract_address,
         ipfs_host,
+        model,
+        split,
     ) = itemgetter(
         "host",
         "port",
@@ -79,12 +70,15 @@ with open(sys.argv[1]) as f:
         "score_contract_address",
         "submit_model_contract_address",
         "ipfs_host",
+        "model",
+        "split",
     )(
         config
     )
     if strategies.get(strategy) is None:
         raise ValueError("Invalid aggregation model")
     strategy = strategies[strategy]
+    split_dataset = splits[split]
 
 logger.info(f"{host}:{port} loaded from config.")
 logger.info(f"Consensus: {consensus}")
@@ -98,7 +92,10 @@ round_lock = threading.Lock()
 round_id = 0
 
 model_lock = threading.Lock()
-model = create_model()
+model = models[model].create_model()
+trainset, testset = model.create_datasets()
+trainloader = DataLoader(trainset, batch_size=batch_size)
+testloader = DataLoader(testset, batch_size=batch_size)
 
 me = f"http://{host}:{port}"
 
@@ -116,54 +113,48 @@ def next_msg_id() -> int:
     return ack_id
 
 
-load_web3 = False
-if load_web3:
+w3 = Web3(Web3.HTTPProvider(endpoint))
 
-    w3 = Web3(Web3.HTTPProvider(endpoint))
+registration_contract = w3.eth.contract(
+    address=Web3.to_checksum_address(registration_contract_address),
+    abi=json.load(
+        open(str(os.path.join(os.path.dirname(__file__), "abi/Registration.json")))
+    )["abi"],
+)
 
-    registration_contract = w3.eth.contract(
-        address=Web3.to_checksum_address(registration_contract_address),
-        abi=json.load(
-            open(str(os.path.join(os.path.dirname(__file__), "abi/Registration.json")))
-        )["abi"],
-    )
-
-    round_control_contract = w3.eth.contract(
-        address=Web3.to_checksum_address(round_control_contract_address),
-        abi=json.load(
-            open(
-                str(
-                    os.path.join(
-                        os.path.dirname(__file__), "abi/RoundControlContract.json"
-                    )
-                )
+round_control_contract = w3.eth.contract(
+    address=Web3.to_checksum_address(round_control_contract_address),
+    abi=json.load(
+        open(
+            str(
+                os.path.join(os.path.dirname(__file__), "abi/RoundControlContract.json")
             )
-        )["abi"],
-    )
+        )
+    )["abi"],
+)
 
-    score_contract = w3.eth.contract(
-        address=Web3.to_checksum_address(score_contract_address),
-        abi=json.load(
-            open(str(os.path.join(os.path.dirname(__file__), "abi/ScoreContract.json")))
-        )["abi"],
-    )
+score_contract = w3.eth.contract(
+    address=Web3.to_checksum_address(score_contract_address),
+    abi=json.load(
+        open(str(os.path.join(os.path.dirname(__file__), "abi/ScoreContract.json")))
+    )["abi"],
+)
 
-    submit_model_contract = w3.eth.contract(
-        address=Web3.to_checksum_address(submit_model_contract_address),
-        abi=json.load(
-            open(str(os.path.join(os.path.dirname(__file__), "abi/SubmitModel.json")))
-        )["abi"],
-    )
+submit_model_contract = w3.eth.contract(
+    address=Web3.to_checksum_address(submit_model_contract_address),
+    abi=json.load(
+        open(str(os.path.join(os.path.dirname(__file__), "abi/SubmitModel.json")))
+    )["abi"],
+)
 
-    @asynccontextmanager
-    async def lifespan(app: FastAPI):
-        registration_contract.functions.registerDevice("trainer").call()
-        yield
 
-    app = FastAPI(lifespan=lifespan)
-else:
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    registration_contract.functions.registerDevice("trainer").call()
+    yield
 
-    app = FastAPI()
+
+app = FastAPI(lifespan=lifespan)
 
 
 @app.get("/")
@@ -234,7 +225,7 @@ def state_manager():
             with clients_models_lock:
                 model.load_state_dict(strategy(client_models))
             logger.info("Aggregated model")
-            accuracy, loss = test_model(model, testloader)
+            accuracy, loss = model.test_model(testloader)
             logger.info(f"Accuracy: {(accuracy):>0.1f}%, Loss: {loss:>8f}")
             logger.info("Submitting model to blockchain")
             cid = asyncio.run(save_model_ipfs(model.state_dict(), ipfs_host))
@@ -246,7 +237,7 @@ async def start_training():
     round_id += 1
 
     curr_weights = copy.deepcopy(model.state_dict())
-    client_indices = stratified_split_dataset(trainset, len(clients))
+    client_indices = split_dataset(trainset, len(clients))
 
     async with httpx.AsyncClient() as client:
         return await asyncio.gather(

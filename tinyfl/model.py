@@ -1,66 +1,18 @@
 import torch
-from torch import nn
-from torch.utils.data import Dataset, Subset, DataLoader
+from torch.utils.data import Dataset, Subset
 import copy
+import numpy as np
 from collections import defaultdict
 from random import shuffle
-from typing import List, Tuple
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
-
-
-class Model(nn.Module):
-    def __init__(self) -> None:
-        super(Model, self).__init__()
-        self.flatten = nn.Flatten()
-        self.layers = nn.Sequential(
-            nn.Linear(28 * 28, 512),
-            nn.ReLU(),
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Linear(128, 10),
-        )
-
-    def forward(self, x):
-        x = self.flatten(x)
-        x = self.layers(x)
-        return x
+from typing import List
+from tinyfl.models.fashion_mnist_model import FashionMNISTModel
+from tinyfl.models.plant_disease_model import PlantDiseaseModel
 
 
-def create_model() -> Model:
-    model = Model().to(device)
-    return model
-
-
-def train_model(model: Model, epochs: int, trainloader: DataLoader):
-    optimizer = torch.optim.Adam(model.parameters())
-    for _ in range(epochs):
-        model.train()
-        for _, (X, y) in enumerate(trainloader):
-            X, y = X.to(device), y.to(device)
-            pred = model(X)
-            loss = nn.CrossEntropyLoss()(pred, y)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-
-def test_model(model: Model, testloader: DataLoader) -> Tuple[float, float]:
-    size = len(testloader.dataset)
-    batches = len(testloader)
-    model.eval()
-    test_loss, correct = 0, 0
-    with torch.no_grad():
-        for X, y in testloader:
-            X, y = X.to(device), y.to(device)
-            pred = model(X)
-            test_loss += nn.CrossEntropyLoss()(pred, y).item()
-            correct += (pred.argmax(1) == y).type(torch.float).sum().item()
-    test_loss /= batches
-    correct /= size
-    return 100 * correct, test_loss
+models = {
+    "fashion_mnist": FashionMNISTModel,
+    "plant_disease": PlantDiseaseModel,
+}
 
 
 def fedavg_models(weights):
@@ -75,6 +27,13 @@ def fedavg_models(weights):
 strategies = {
     "fedavg": fedavg_models,
 }
+
+
+def simple_split_dataset(dataset: Dataset, num_parties: int) -> List[List[int]]:
+    indices = list(range(len(dataset)))
+    shuffle(indices)
+    index_partitions = [sorted(indices[i::num_parties]) for i in range(num_parties)]
+    return index_partitions
 
 
 def stratified_split_dataset(dataset: Dataset, num_parties: int) -> List[List[int]]:
@@ -100,5 +59,65 @@ def stratified_split_dataset(dataset: Dataset, num_parties: int) -> List[List[in
     return indices_split
 
 
+splits = {"simple": simple_split_dataset, "stratified": stratified_split_dataset}
+
+
 def subset_from_indices(dataset: Dataset, indices: List[int]) -> Subset:
     return Subset(dataset=dataset, indices=indices)
+
+
+# TODO: update to new models api
+def _compute_accuracy(weight, testloader):
+    model = create_model()
+    model.load_state_dict(weight)
+    return test_model(model, testloader)[0]
+
+
+def accuracy_scorer(weights, testloader):
+    return [_compute_accuracy(weight, testloader) for weight in weights]
+
+
+def marginal_gain_scorer(weights, prev_scores, testloader):
+    assert len(weights) == len(prev_scores)
+    return [
+        max(a - b, 0)
+        for a, b in zip(
+            [_compute_accuracy(weight, testloader) for weight in weights],
+            prev_scores,
+        )
+    ]
+
+
+def multikrum_scorer(weights):
+    R = len(weights)
+    f = R // 3 - 1
+    closest_updates = R - f - 2
+
+    keys = weights[0].keys()
+
+    return [
+        sum(
+            sorted(
+                [
+                    sum(
+                        [
+                            np.linalg.norm(
+                                weights[i][key].cpu() - weights[j][key].cpu()
+                            )
+                            for key in keys
+                        ]
+                    )
+                    for j in range(R)
+                    if j != i
+                ]
+            )[:closest_updates]
+        )
+        for i in range(R)
+    ]
+
+
+scorers = {
+    "accuracy": accuracy_scorer,
+    "marginal_gain": marginal_gain_scorer,
+    "multi_krum": multikrum_scorer,
+}
