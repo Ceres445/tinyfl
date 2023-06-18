@@ -55,7 +55,7 @@ with open(sys.argv[1]) as f:
         score_contract_address,
         submit_model_contract_address,
         ipfs_host,
-        model,
+        cur_model,
         split,
     ) = itemgetter(
         "host",
@@ -92,7 +92,7 @@ round_lock = threading.Lock()
 round_id = 0
 
 model_lock = threading.Lock()
-model = models[model].create_model()
+model = models[cur_model].create_model()
 trainset, testset = model.create_datasets()
 trainloader = DataLoader(trainset, batch_size=batch_size)
 testloader = DataLoader(testset, batch_size=batch_size)
@@ -171,7 +171,9 @@ async def ping():
 @app.get("/load_model")
 async def load_model(cid: str):
     mod = await load_model_ipfs(cid, ipfs_host)
-    accuracy, loss = test_model(model, testloader)
+    model = models[cur_model].create_model()
+    model.load_state_dict(mod)
+    accuracy, loss = model.test_model(testloader)
     return {
         "success": True,
         "message": "Model loaded",
