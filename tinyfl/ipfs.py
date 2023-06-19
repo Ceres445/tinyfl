@@ -20,6 +20,6 @@ async def save_model_ipfs(
 
 async def load_model_ipfs(cid: str, ipfs_host: str) -> nn.Module.state_dict:
     client = aioipfs.AsyncIPFS(maddr=ipfs_host)
-    await client.get(path=cid, dstdir=cid)
+    await client.get(path=cid, dstdir="out")
     await client.close()
-    return torch.load(f"{cid}/{cid}")
+    return torch.load(f"out/{cid}")
