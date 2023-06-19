@@ -118,8 +118,10 @@ w3 = Web3(Web3.HTTPProvider(endpoint))
 registration_contract = w3.eth.contract(
     address=Web3.to_checksum_address(registration_contract_address),
     abi=json.load(
-        open(str(os.path.join(os.path.dirname(__file__), "abi/Registration.json")))
-    )["abi"],
+        open(
+            str(os.path.join(os.path.dirname(__file__), "../../abi/Registration.json"))
+        )
+    ),
 )
 
 round_control_contract = w3.eth.contract(
