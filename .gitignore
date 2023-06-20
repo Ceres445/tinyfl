@@ -9,3 +9,7 @@ poetry.lock
 password.txt
 boot.key
 imp.txt
+
+# model files
+out/
+*.pt

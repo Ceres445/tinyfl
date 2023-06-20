@@ -77,3 +77,15 @@ export ipfs_data=</absolute/path/to/somewhere_else/>
 docker pull ipfs/kubo
 docker run -d --name ipfs_host -v $ipfs_staging:/export -v $ipfs_data:/data/ipfs -p 4001:4001 -p 4001:4001/udp -p 127.0.0.1:8080:8080 -p 127.0.0.1:5001:5001 ipfs/kubo:latest
 ```
+# Setting up web3 endpoint with anvil
+
+Download foundryup
+`curl -L https://foundry.paradigm.xyz | bash`
+Download anvil
+`foundryup`
+Start web3 server
+`anvil`
+Deploy the smart contract with a provided private key from the anvil server
+`forge create --private-key <private-key-from-anvil> path/to/smart_contract.sol`
+
+
