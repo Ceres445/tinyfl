@@ -10,12 +10,11 @@ async def save_model_ipfs(
 ) -> Tuple[str, str]:
     client = aioipfs.AsyncIPFS(maddr=ipfs_host)
     cur_time = str(datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + ".pt")
-    torch.save(state_dict, cur_time)
-    # client.add("model.pt")
-    [cids] = [entry["Hash"] async for entry in client.add(cur_time)]
+    torch.save(state_dict, f"in/{cur_time}")
+    [cids] = [entry["Hash"] async for entry in client.add(f"in/{cur_time}")]
     cids = str(cids)
     await client.close()
-    return cids, cur_time
+    return cids
 
 
 async def load_model_ipfs(cid: str, ipfs_host: str) -> nn.Module.state_dict:

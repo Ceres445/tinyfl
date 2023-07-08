@@ -13,3 +13,4 @@ imp.txt
 # model files
 out/
 *.pt
+ipfs

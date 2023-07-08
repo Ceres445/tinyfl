@@ -52,7 +52,6 @@ w3 = Web3(Web3.HTTPProvider(endpoint))
 
 _, testset = model.create_datasets()
 testloader = DataLoader(testset, batch_size=64)
-model = models[cur_model].create_model()
 
 registration_contract = w3.eth.contract(
     address=Web3.to_checksum_address(registration_contract_address),
@@ -76,11 +75,14 @@ w3.eth.default_account = account
 
 
 async def score_model(cid: str):
-    print("it scorin time", cid)
-
+    model = models[cur_model].create_model()
+    logger.info(f"Model recevied to score with CID: {cid}")
     model.load_state_dict(await load_model_ipfs(cid, ipfs_host))
+    logger.info(f"Model pull from IPFS")
     accuracy, _ = model.test_model(testloader)
-    round_free_contract.functions.scoreModel(cid, accuracy).transact()
+    logger.info(f"Accuracy: {(accuracy):>0.1f}%")
+    round_free_contract.functions.scoreModel(cid, int(accuracy)).transact()
+    logger.info(f"Model scores submitted to contract")
 
 
 def main():
@@ -94,5 +96,6 @@ def main():
                 events.add(event)
                 last_seen_block = event["blockNumber"]
                 if w3.eth.default_account in event["args"]["scorers"]:
+                    print(event)
                     asyncio.run(score_model(event["args"]["model"]))
         time.sleep(1)
