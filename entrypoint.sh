@@ -9,11 +9,11 @@ if [[ -z $TINYFL_CONFIG ]]; then
 fi
 if [[ $CLIENT -eq 0 ]]; then
     echo "Starting aggregator"
-    exec poetry run agg $TINYFL_CONFIG
+    exec psrecord "poetry run agg $TINYFL_CONFIG" --log perf.log --include-children --interval 1
     exit 0
 elif [[ $CLIENT -eq 1 ]]; then
     echo "Starting party"
-    exec poetry run party $TINYFL_CONFIG
+    exec psrecord "poetry run party $TINYFL_CONFIG" --log perf.log --include-children --interval 1
     exit 0
 else
     echo "CLIENT environment variable must be 0 or 1"
