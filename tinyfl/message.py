@@ -32,13 +32,13 @@ class SubmitWeights(Message):
     url: str
     round: int
     weights: Mapping[str, Any]
-    final: bool = False
 
 
 @dataclass
 class SubmitSuperWeights(Message):
     url: str
     weights: Mapping[str, Any]
+    timestamp: float
 
 
 # TODO: Implement this using celery

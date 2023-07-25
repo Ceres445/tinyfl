@@ -120,7 +120,6 @@ def run_training(
                     msg_id=next_msg_id(),
                     round=round,
                     weights=copy.deepcopy(model.state_dict()),
-                    final=False,
                 )
             ),
         )
@@ -145,7 +144,6 @@ def run_training(
                         msg_id=next_msg_id(),
                         round=round,
                         weights=copy.deepcopy(model.state_dict()),
-                        final=final,
                     )
                 ),
             )

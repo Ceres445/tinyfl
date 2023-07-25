@@ -4,3 +4,4 @@ env
 
 poetry.lock
 .python-version
+*.log

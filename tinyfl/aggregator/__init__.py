@@ -1,6 +1,9 @@
 import copy
+import csv
+import os
 import pickle
 import threading
+import time
 from typing import Any, List, Mapping
 from fastapi import BackgroundTasks, FastAPI, Request
 from contextlib import asynccontextmanager
@@ -159,9 +162,9 @@ async def handle(req: Request, background_tasks: BackgroundTasks):
                 clients.add(url)
             logger.info(f"Client {url} registered")
             return {"success": True, "message": "Registered"}
-        case SubmitWeights(round=round, weights=weights, url=url, final=final):
+        case SubmitWeights(round=round, weights=weights, url=url):
             background_tasks.add_task(
-                collect_weights, url, copy.deepcopy(weights), final
+                collect_weights, url, copy.deepcopy(weights), time.time()
             )
             return {"success": True, "message": "Weights submitted"}
         case DeRegister(url=url, id=id):
@@ -173,6 +176,24 @@ async def handle(req: Request, background_tasks: BackgroundTasks):
             background_tasks.add_task(state_manager, weights, indices)
         case _:
             return {"success": False, "message": "Unknown message"}
+
+@app.get("/logs")
+async def get_logs(): 
+    a = None 
+    b = None
+    c = None
+    d = None
+    if os.path.exists("scores_parties.csv") and os.path.exists("scores.csv"):
+        with open("scores_parties.csv", "r") as f:
+            a = f.read()
+        with open("scores.csv", "r") as f:
+            b = f.read()
+    if os.path.exists("perf.log"):
+        with open("perf.log", "r") as f:
+            c = f.read()
+        with open("perf_network.log", "r") as f:
+            d = f.read()
+    return {"scores_parties": a, "scores": b, "perf": c, "perf_network": d}
 
 
 def state_manager(weights: Any = None, indices: Any = None):
@@ -194,13 +215,33 @@ def state_manager(weights: Any = None, indices: Any = None):
             logger.info("Quorum achieved!")
             # TODO: stop training after aggregation
             # asyncio.run(stop_training())
+
+            # Score each model 
+            with open("scores_parties.csv", "a") as f:
+                writer = csv.writer(f)
+                for client, data in client_models.items():
+                    if data is None:
+                        continue
+                    model.load_state_dict(data[0])
+                    accuracy, loss = model.test_model(testloader)
+                    # data[1] is timestamp
+                    writer.writerow([data[1], round_id, client, accuracy, loss])
+            for client, data in client_models.items():
+                if data is None:
+                    continue
+                # Remove timestamp and just store weights
+                client_models[client] = data[0]
             with clients_models_lock:
                 model.load_state_dict(
                     strategy(list(filter(lambda x: x != None, client_models.values())))
                 )
             logger.info("Aggregated model")
+
             accuracy, loss = model.test_model(testloader)
             logger.info(f"Accuracy: {(accuracy):>0.1f}%, Loss: {loss:>8f}")
+            with open("scores.csv", "a") as f:
+                writer = csv.writer(f)
+                writer.writerow([time.time(), round_id, accuracy, loss])
             if super_aggregator:
                 asyncio.run(submit_model())
 
@@ -213,6 +254,7 @@ async def submit_model():
                 url=me,
                 msg_id=next_msg_id(),
                 weights=copy.deepcopy(model.state_dict()),
+                timestamp=time.time(),
             )
         ),
     )
@@ -266,7 +308,7 @@ async def start_training(weights: Any = None, indices: Any = None):
         )
 
 
-async def collect_weights(url: str, weights: Mapping[str, Any], final: bool):
+async def collect_weights(url: str, weights: Mapping[str, Any], timestamp: float):
     with round_lock:
         with quorum:
             with clients_models_lock:
@@ -276,7 +318,7 @@ async def collect_weights(url: str, weights: Mapping[str, Any], final: bool):
                         list(filter(lambda x: x != None, client_models.values()))
                     )
                     if models_submitted < consensus:
-                        client_models[url] = weights
+                        client_models[url] = (weights, timestamp)
                         logger.info("Appended weights")
                         notify_quorum = (models_submitted + 1) == consensus
                     if notify_quorum:
