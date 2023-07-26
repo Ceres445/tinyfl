@@ -205,6 +205,7 @@ async def start_training():
             ]
         )
         for i in responses:
+            print(i.url, i.json())
             client_len[str(i.url).split("/len_clients")[0]] = int(
                 i.json()["len_clients"]
             )
