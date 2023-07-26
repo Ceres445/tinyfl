@@ -122,7 +122,7 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down")
     if super_aggregator:
         r = httpx.post(
-            strategy_name, data=pickle.dumps(DeRegister(msg_id=next_msg_id(), url=me))
+            super_aggregator, data=pickle.dumps(DeRegister(msg_id=next_msg_id(), url=me))
         )
         if r.status_code == 200:
             logger.info("Shutdown complete")
