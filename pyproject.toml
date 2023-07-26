@@ -20,7 +20,7 @@ sup = "tinyfl.baseline:main"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.3.0"
-psrecord = "^1.2"
+psrecord = { git = "https://github.com/Ceres445/psrecord", branch = "master" }
 matplotlib = "^3.7.1"
 
 [build-system]
