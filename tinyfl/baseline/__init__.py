@@ -237,7 +237,7 @@ async def start_training():
         )
 
 
-async def collect_weights(url: str, weights: Mapping[str, Any], timestamp: float)):
+async def collect_weights(url: str, weights: Mapping[str, Any], timestamp: float):
     with round_lock:
         with quorum:
             with clients_models_lock:
