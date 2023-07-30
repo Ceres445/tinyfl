@@ -223,7 +223,7 @@ async def start_training():
     async with httpx.AsyncClient() as client:
         # Switch from asyncio.gather to asyncio.wait
         try: 
-            done, pending = await asyncio.wait( *[
+            done, pending = await asyncio.wait( [
                 client.post(
                     party,
                     data=pickle.dumps(
