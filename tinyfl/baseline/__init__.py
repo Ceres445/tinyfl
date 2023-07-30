@@ -195,6 +195,7 @@ async def start_training():
 
     curr_weights = copy.deepcopy(model.state_dict())
 
+    print("Starting training")
     async with httpx.AsyncClient() as client:
         try:
             done, pending = await asyncio.wait(
@@ -206,7 +207,8 @@ async def start_training():
                 ]
             )
             responses = [i.result() for i in done]
-            print(responses)
+            print(*map(lambda x: x.url, responses))
+            client_len = dict()
             for i in responses:
                 client_len[str(i.url).split("/len_clients")[0]] = int(
                     i.json()["len_clients"]
@@ -215,6 +217,7 @@ async def start_training():
                 i.cancel()
 
         except Exception as e:
+            print("error")
             logger.error(e)
             return
 
@@ -222,6 +225,8 @@ async def start_training():
     agg_indice = []
     cur = 0
     for agg in aggs:
+        if agg not in client_len:
+            continue
         agg_indice.append((agg, client_indices[cur : cur + client_len[agg]]))
         cur += client_len[agg]
 
