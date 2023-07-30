@@ -23,6 +23,7 @@ black = "^23.3.0"
 psrecord = { git = "https://github.com/Ceres445/psrecord", branch = "master" }
 matplotlib = "^3.7.1"
 
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
