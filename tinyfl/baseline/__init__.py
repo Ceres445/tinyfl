@@ -204,6 +204,7 @@ async def start_training():
                 for party in aggs
             ]
         )
+        print(responses)
         for i in responses:
             client_len[str(i.url).split("/len_clients")[0]] = int(
                 i.json()["len_clients"]
@@ -220,8 +221,9 @@ async def start_training():
     # print(client_len, list(map(lambda x: (x[0], len(x[1])), agg_indice)))
 
     async with httpx.AsyncClient() as client:
-        return await asyncio.gather(
-            *[
+        # Switch from asyncio.gather to asyncio.wait
+        try: 
+            done, pending = await asyncio.wait( *[
                 client.post(
                     party,
                     data=pickle.dumps(
@@ -233,8 +235,13 @@ async def start_training():
                     ),
                 )
                 for party, indices in agg_indice
-            ]
-        )
+            ], return_when=asyncio.ALL_COMPLETED, timeout=10)
+            for i in done:
+                print(i.result())
+            for i in pending:
+                i.cancel()
+        except Exception as e:
+            print(e)
 
 
 async def collect_weights(url: str, weights: Mapping[str, Any], timestamp: float):
