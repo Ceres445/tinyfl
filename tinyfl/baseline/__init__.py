@@ -196,19 +196,27 @@ async def start_training():
     curr_weights = copy.deepcopy(model.state_dict())
 
     async with httpx.AsyncClient() as client:
-        responses = await asyncio.gather(
-            *[
-                client.get(
-                    party + "/len_clients",
-                )
-                for party in aggs
-            ]
-        )
-        print(responses)
-        for i in responses:
-            client_len[str(i.url).split("/len_clients")[0]] = int(
-                i.json()["len_clients"]
+        try:
+            done, pending = await asyncio.wait(
+                [
+                    client.get(
+                        party + "/len_clients",
+                    )
+                    for party in aggs
+                ]
             )
+            responses = [i.result() for i in done]
+            print(responses)
+            for i in responses:
+                client_len[str(i.url).split("/len_clients")[0]] = int(
+                    i.json()["len_clients"]
+                )
+            for i in pending:
+                i.cancel()
+
+        except Exception as e:
+            logger.error(e)
+            return
 
     client_indices = split_dataset(trainset, sum(client_len.values()))
     agg_indice = []
