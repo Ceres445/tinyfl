@@ -122,7 +122,8 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down")
     if super_aggregator:
         r = httpx.post(
-            strategy_name, data=pickle.dumps(DeRegister(msg_id=next_msg_id(), url=me))
+            super_aggregator,
+            data=pickle.dumps(DeRegister(msg_id=next_msg_id(), url=me)),
         )
         if r.status_code == 200:
             logger.info("Shutdown complete")
@@ -177,9 +178,10 @@ async def handle(req: Request, background_tasks: BackgroundTasks):
         case _:
             return {"success": False, "message": "Unknown message"}
 
+
 @app.get("/logs")
-async def get_logs(): 
-    a = None 
+async def get_logs():
+    a = None
     b = None
     c = None
     d = None
@@ -216,7 +218,7 @@ def state_manager(weights: Any = None, indices: Any = None):
             # TODO: stop training after aggregation
             # asyncio.run(stop_training())
 
-            # Score each model 
+            # Score each model
             with open("scores_parties.csv", "a") as f:
                 writer = csv.writer(f)
                 for client, data in client_models.items():

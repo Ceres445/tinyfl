@@ -15,6 +15,9 @@ elif [[ $CLIENT -eq 1 ]]; then
     echo "Starting party"
     exec psrecord "poetry run party $TINYFL_CONFIG" --log perf.log --include-children --interval 1
     exit 0
+elif [[ $CLIENT -eq 2 ]]; then 
+    echo "Starting super agg"
+    exec psrecord "poetry run sup $TINYFL_CONFIG" --log perf.log --include-children --interval 1
 else
     echo "CLIENT environment variable must be 0 or 1"
     exit 1

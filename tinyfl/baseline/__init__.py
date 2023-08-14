@@ -20,7 +20,13 @@ from tinyfl.model import (
     splits,
     strategies,
 )
-from tinyfl.message import DeRegister, Register, StartSuperRound, SubmitSuperWeights, SubmitWeights
+from tinyfl.message import (
+    DeRegister,
+    Register,
+    StartSuperRound,
+    SubmitSuperWeights,
+    SubmitWeights,
+)
 
 batch_size = 64
 
@@ -112,7 +118,9 @@ async def handle(req: Request, background_tasks: BackgroundTasks):
             return {"success": True, "message": "Registered"}
         case SubmitSuperWeights(url=url, weights=weights, timestamp=timestamp):
             print("Received super weights")
-            background_tasks.add_task(collect_weights, url, copy.deepcopy(weights), timestamp)
+            background_tasks.add_task(
+                collect_weights, url, copy.deepcopy(weights), timestamp
+            )
             return {"success": True, "message": "Weights submitted"}
         case DeRegister(url=url, id=id):
             with client_lock:
@@ -122,13 +130,16 @@ async def handle(req: Request, background_tasks: BackgroundTasks):
         case _:
             return {"success": False, "message": "Unknown message"}
 
+
 @app.get("/logs")
-async def get_logs(): 
-    a = None 
+async def get_logs():
+    a = None
     b = None
     c = None
     d = None
-    if os.path.exists("super_aggregator_scores.csv") and os.path.exists("scores_aggregators.csv"):
+    if os.path.exists("super_aggregator_scores.csv") and os.path.exists(
+        "scores_aggregators.csv"
+    ):
         with open("super_aggregator_scores.csv", "r") as f:
             a = f.read()
         with open("scores_aggregators.csv", "r") as f:
@@ -138,7 +149,12 @@ async def get_logs():
             c = f.read()
         with open("perf_network.log", "r") as f:
             d = f.read()
-    return { "scores_aggregators": a, "super_aggregator_scores": b, "perf": c, "perf_network": d }
+    return {
+        "scores_aggregators": a,
+        "super_aggregator_scores": b,
+        "perf": c,
+        "perf_network": d,
+    }
 
 
 def state_manager():
@@ -158,10 +174,10 @@ def state_manager():
             return
         else:
             logger.info("Quorum achieved!")
-            #TODO: stop training after aggregation
+            # TODO: stop training after aggregation
             # asyncio.run(stop_training())
 
-            # Score each model 
+            # Score each model
             with open("scores_aggregators.csv", "a") as f:
                 writer = csv.writer(f)
                 for client, data in client_models.items():
@@ -195,50 +211,74 @@ async def start_training():
 
     curr_weights = copy.deepcopy(model.state_dict())
 
+    print("Starting training")
     async with httpx.AsyncClient() as client:
-        responses = await asyncio.gather(
-            *[
-                client.get(
-                    party + "/len_clients",
-                )
-                for party in aggs
-            ]
-        )
-        for i in responses:
-            print(i.url, i.json())
-            client_len[str(i.url).split("/len_clients")[0]] = int(
-                i.json()["len_clients"]
+        try:
+            done, pending = await asyncio.wait(
+                [
+                    client.get(
+                        party + "/len_clients",
+                    )
+                    for party in aggs
+                ]
             )
+            responses = [i.result() for i in done]
+            print(*map(lambda x: x.url, responses))
+            client_len = dict()
+            for i in responses:
+                client_len[str(i.url).split("/len_clients")[0]] = int(
+                    i.json()["len_clients"]
+                )
+            for i in pending:
+                i.cancel()
+
+        except Exception as e:
+            print("error")
+            logger.error(e)
+            return
 
     client_indices = split_dataset(trainset, sum(client_len.values()))
     agg_indice = []
     cur = 0
     for agg in aggs:
+        if agg not in client_len:
+            continue
         agg_indice.append((agg, client_indices[cur : cur + client_len[agg]]))
         cur += client_len[agg]
 
     # Tested to see if the indices are correct
     # print(client_len, list(map(lambda x: (x[0], len(x[1])), agg_indice)))
+    print("Checked length, sending start super round")
 
     async with httpx.AsyncClient() as client:
-        return await asyncio.gather(
-            *[
-                client.post(
-                    party,
-                    data=pickle.dumps(
-                        StartSuperRound(
-                            msg_id=next_msg_id(),
-                            weights=curr_weights,
-                            indices=indices,
-                        )
-                    ),
-                )
-                for party, indices in agg_indice
-            ]
-        )
+        # Switch from asyncio.gather to asyncio.wait
+        try:
+            done, pending = await asyncio.wait(
+                [
+                    client.post(
+                        party,
+                        data=pickle.dumps(
+                            StartSuperRound(
+                                msg_id=next_msg_id(),
+                                weights=curr_weights,
+                                indices=indices,
+                            )
+                        ),
+                    )
+                    for party, indices in agg_indice
+                ],
+                return_when=asyncio.ALL_COMPLETED,
+                timeout=10,
+            )
+            for i in done:
+                print(i.result())
+            for i in pending:
+                i.cancel()
+        except Exception as e:
+            print(e)
 
 
-async def collect_weights(url: str, weights: Mapping[str, Any], timestamp: float)):
+async def collect_weights(url: str, weights: Mapping[str, Any], timestamp: float):
     with round_lock:
         with quorum:
             with clients_models_lock:

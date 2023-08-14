@@ -25,6 +25,8 @@ COPY . /code/
 
 COPY ./entrypoint.sh ./
 
+RUN tar xf bandwhich.tar.gz -C /usr/local/bin
+
 RUN chmod +x entrypoint.sh
 
 CMD ["./entrypoint.sh"]
